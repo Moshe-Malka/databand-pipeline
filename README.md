@@ -1,7 +1,9 @@
 
-# Welcome to your CDK Python project!
+# Databand Interview Task
 
-This is a blank project for Python development with CDK.
+This is a repository to hold my solution for the Databand interview task i received.
+
+## Fallowing is the CDK Info:
 
 The `cdk.json` file tells the CDK Toolkit how to execute your app.
 

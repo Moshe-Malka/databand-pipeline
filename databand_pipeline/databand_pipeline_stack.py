@@ -50,7 +50,7 @@ class DatabandPipelineStack(core.Stack):
             self, "saver_lambda_function",
             runtime=_lambda.Runtime.PYTHON_3_9,
             handler="saver-lambda.handler",
-            environment = {,
+            environment = {
                 "DATA_BUCKET" : data_bucket.bucket_name()
             },
             memory_size = 512,
