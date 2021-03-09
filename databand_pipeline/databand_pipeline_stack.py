@@ -16,16 +16,16 @@ class DatabandPipelineStack(core.Stack):
         
         # Lambda Layers
         requests_layer = _lambda.LayerVersion(self, "requests", code=_lambda.AssetCode('layers/requests.zip'))
-        # matplotlib_layer = _lambda.LayerVersion(self, "matplotlib", code=_lambda.AssetCode('layers/matplotlib.zip'))
-        pandas_layer = _lambda.LayerVersion(self, "matplotlib", code=_lambda.AssetCode('layers/pandas.zip'))
+        matplotlib_layer = _lambda.LayerVersion(self, "matplotlib", code=_lambda.AssetCode('layers/matplotlib.zip'))
+        pandas_layer = _lambda.LayerVersion(self, "pandas", code=_lambda.AssetCode('layers/pandas.zip'))
 
         # Lambdas
         fetch_function = _lambda.Function(
             self, "fetch_lambda_function",
-            runtime=_lambda.Runtime.PYTHON_3_9,
+            runtime=_lambda.Runtime.PYTHON_3_7,
             environment = {
                 "URL" : "https://gbfs.citibikenyc.com/gbfs/en/station_status.json",
-                "DATA_BUCKET" : data_bucket.bucket_name()
+                "DATA_BUCKET" : data_bucket.bucket_name
             },
             layers=[requests_layer],
             memory_size = 512,
@@ -36,22 +36,10 @@ class DatabandPipelineStack(core.Stack):
 
         enrich_function = _lambda.Function(
             self, "enrich_lambda_function",
-            runtime=_lambda.Runtime.PYTHON_3_9,
+            runtime=_lambda.Runtime.PYTHON_3_7,
             handler="enrich-lambda.handler",
             environment = {
-                "DATA_BUCKET" : data_bucket.bucket_name()
-            },
-            memory_size = 512,
-            timeout=Duration.minutes(3),
-            code=_lambda.Code.asset("./src")
-        )
-
-        saver_function = _lambda.Function(
-            self, "saver_lambda_function",
-            runtime=_lambda.Runtime.PYTHON_3_9,
-            handler="saver-lambda.handler",
-            environment = {
-                "DATA_BUCKET" : data_bucket.bucket_name()
+                "DATA_BUCKET" : data_bucket.bucket_name
             },
             memory_size = 512,
             timeout=Duration.minutes(3),
@@ -60,33 +48,32 @@ class DatabandPipelineStack(core.Stack):
 
         generate_monthly_dashboard_function = _lambda.Function(
             self, "generate_monthly_dashboard_lambda_function",
-            runtime=_lambda.Runtime.PYTHON_3_9,
+            runtime=_lambda.Runtime.PYTHON_3_7,
             handler="generate_monthly_dashboard-lambda.handler",
             environment = {
-                "DATA_BUCKET" : data_bucket.bucket_name()
+                "DATA_BUCKET" : data_bucket.bucket_name
             },
-            layers=[pandas_layer],
+            layers=[matplotlib_layer, pandas_layer],
             memory_size = 512,
             timeout=Duration.minutes(3),
             code=_lambda.Code.asset("./src")
         )
 
         # S3 Permissions
-        data_bucket.grant_write(saver_function)
-        data_bucket.grant_write(generate_monthly_dashboard_function)
+        data_bucket.grant_write(fetch_function)
+        data_bucket.grant_read_write(enrich_function)
+        data_bucket.grant_read_write(generate_monthly_dashboard_function)
         
         # Step Function
 
         # Taskes
-        fetch_task = sfn.Task(self, "Fetch", task=sfn_tasks.LambdaInvoke(self, 'fetch', lambda_function=fetch_function))
-        enrich_task = sfn.Task(self, "Enrich", task=sfn_tasks.LambdaInvoke(self, 'enrich', lambda_function=enrich_function))
-        save_data_task = sfn.Task(self, "Save Data", task=sfn_tasks.LambdaInvoke(self, 'save_data', lambda_function=saver_function))
-        generate_monthly_dashboard_task = sfn.Task(self, "Generate Monthly Dashboard", task=sfn_tasks.LambdaInvoke(self, 'generate_monthly_dashboard', lambda_function=generate_monthly_dashboard_function))
+        fetch_task = sfn_tasks.LambdaInvoke(self, 'fetch', lambda_function=fetch_function, payload_response_only=True)
+        enrich_task = sfn_tasks.LambdaInvoke(self, 'enrich', lambda_function=enrich_function, payload_response_only=True)
+        generate_monthly_dashboard_task = sfn_tasks.LambdaInvoke(self, 'generate_monthly_dashboard', lambda_function=generate_monthly_dashboard_function, payload_response_only=True)
 
         # Defenition
         definition = fetch_task\
             .next(enrich_task)\
-            .next(db_saver_task)\
             .next(generate_monthly_dashboard_task)
 
         sfn.StateMachine(
